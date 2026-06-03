@@ -1,12 +1,12 @@
 name: Update TRMNL Bus Display
- 
+
 on:
   schedule:
     # Run every 15 minutes
     - cron: '*/15 * * * *'
   # Allow manual trigger
   workflow_dispatch:
- 
+
 jobs:
   update-display:
     runs-on: ubuntu-latest
@@ -59,30 +59,34 @@ jobs:
               
               if departures:
                   for idx, dep in enumerate(departures):
-                      # Handle both dict and object access
+                      # Extract data from departure object
                       if isinstance(dep, dict):
-                          time_str = dep.get('dateTime', '')
-                          line = str(dep.get('Product', {}).get('line', '?')) if isinstance(dep.get('Product'), dict) else '?'
+                          # Use real-time time (rtTime) if available, otherwise scheduled time
+                          time_str = dep.get('rtTime', dep.get('time', ''))
+                          # Get line number from name field (e.g., "Bus 200")
+                          name_field = dep.get('name', '?')
+                          line = str(name_field).replace('Bus ', '').strip() if 'Bus' in str(name_field) else '?'
                           direction = dep.get('direction', 'Unknown')
-                      else:
-                          time_str = getattr(dep, 'dateTime', '')
-                          product = getattr(dep, 'Product', {})
-                          line = str(getattr(product, 'line', '?')) if hasattr(product, 'line') else '?'
-                          direction = getattr(dep, 'direction', 'Unknown')
-                      
-                      if time_str:
-                          # Extract time (format: YYYY-MM-DDTHH:MM:SS)
-                          time_part = time_str.split('T')[1][:5] if 'T' in time_str else time_str
-                      else:
-                          time_part = "N/A"
-                      
-                      # Calculate minutes until departure
-                      try:
-                          dep_time = datetime.fromisoformat(str(time_str).replace('Z', '+00:00'))
-                          mins_until = int((dep_time - now).total_seconds() / 60)
-                          mins_str = f"{mins_until}m" if mins_until > 0 else "Now"
-                      except:
-                          mins_str = "N/A"
+                          
+                          # Extract time (format: HH:MM:SS)
+                          if time_str:
+                              time_part = time_str[:5] if len(time_str) >= 5 else time_str
+                          else:
+                              time_part = "N/A"
+                          
+                          # Calculate minutes until departure
+                          try:
+                              # Parse time string HH:MM:SS
+                              time_obj = datetime.strptime(time_str, '%H:%M:%S').time()
+                              dep_time = datetime.combine(now.date(), time_obj)
+                              mins_until = int((dep_time - now).total_seconds() / 60)
+                              # Handle times past midnight
+                              if mins_until < -300:  # More than 5 hours ago
+                                  dep_time = datetime.combine(now.date() + __import__('datetime').timedelta(days=1), time_obj)
+                                  mins_until = int((dep_time - now).total_seconds() / 60)
+                              mins_str = f"{mins_until}m" if mins_until > 0 else "Now"
+                          except:
+                              mins_str = "N/A"
                       
                       # Highlight next departure
                       is_next = idx == 0
