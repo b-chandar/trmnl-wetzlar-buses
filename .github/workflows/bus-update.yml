@@ -1,0 +1,140 @@
+name: Update TRMNL Bus Display
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: '*/15 * * * *'
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  update-display:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch bus data and update TRMNL
+        run: |
+          python3 << 'EOF'
+          import requests
+          import json
+          from datetime import datetime
+          
+          # Configuration
+          RMV_API_KEY = "${{ secrets.RMV_API_KEY }}"
+          STOP_ID = "3019349"
+          STOP_NAME = "Hermannstein An der Dillbrücke"
+          TRMNL_WEBHOOK = "${{ secrets.TRMNL_WEBHOOK_URL }}"
+          
+          # Fetch departures from RMV API
+          url = f"https://www.rmv.de/hapi/departureBoard?id={STOP_ID}&accessId={RMV_API_KEY}&format=json"
+          
+          try:
+              response = requests.get(url, timeout=10)
+              response.raise_for_status()
+              data = response.json()
+              
+              # Extract departures
+              departures = data.get('Departure', [])[:6]  # Get first 6 departures
+              
+              # Generate HTML
+              now = datetime.now()
+              html_content = f"""
+              <div style="font-family: Arial, sans-serif; padding: 10px; color: #000; background: #fff;">
+                <h2 style="margin: 0 0 5px 0; font-size: 18px; border-bottom: 2px solid #000; padding-bottom: 5px;">
+                  WETZLAR BUS
+                </h2>
+                <p style="margin: 5px 0; font-size: 11px; opacity: 0.7;">
+                  {STOP_NAME}
+                </p>
+                <p style="margin: 5px 0; font-size: 10px; opacity: 0.6;">
+                  Updated: {now.strftime('%H:%M')}
+                </p>
+                
+                <div style="margin-top: 10px;">
+              """
+              
+              if departures:
+                  for idx, dep in enumerate(departures):
+                      time_str = dep.get('dateTime', '')
+                      if time_str:
+                          # Extract time (format: YYYY-MM-DDTHH:MM:SS)
+                          time_part = time_str.split('T')[1][:5] if 'T' in time_str else time_str
+                      else:
+                          time_part = "N/A"
+                      
+                      line = dep.get('Product', {}).get('line', '?')
+                      direction = dep.get('direction', 'Unknown')
+                      
+                      # Calculate minutes until departure
+                      try:
+                          dep_time = datetime.fromisoformat(dep.get('dateTime', '').replace('Z', '+00:00'))
+                          mins_until = int((dep_time - now).total_seconds() / 60)
+                          mins_str = f"{mins_until}m" if mins_until > 0 else "Now"
+                      except:
+                          mins_str = "N/A"
+                      
+                      # Highlight next departure
+                      is_next = idx == 0
+                      row_style = "background-color: #f5f5f5; font-weight: bold;" if is_next else ""
+                      
+                      html_content += f"""
+                      <div style="display: grid; grid-template-columns: 40px 60px 1fr 60px; gap: 8px; padding: 8px 0; border-bottom: 1px solid #ccc; {row_style}">
+                        <div style="background: #000; color: #fff; padding: 3px; border-radius: 3px; text-align: center; font-weight: bold; font-size: 12px;">
+                          {line}
+                        </div>
+                        <div style="text-align: center; font-size: 14px; font-weight: bold;">
+                          {time_part}
+                        </div>
+                        <div style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                          {direction}
+                        </div>
+                        <div style="text-align: right; font-size: 12px; font-weight: bold;">
+                          {mins_str}
+                        </div>
+                      </div>
+                      """
+              else:
+                  html_content += """
+                  <p style="font-size: 12px; color: #999;">
+                    No departures found
+                  </p>
+                  """
+              
+              html_content += """
+                </div>
+                <p style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #000; font-size: 9px; opacity: 0.6;">
+                  Data source: RMV Open Data API
+                </p>
+              </div>
+              """
+              
+              # Send to TRMNL webhook
+              payload = {
+                  "html": html_content
+              }
+              
+              webhook_response = requests.post(TRMNL_WEBHOOK, json=payload, timeout=10)
+              webhook_response.raise_for_status()
+              
+              print(f"✅ Successfully updated TRMNL display at {now.strftime('%Y-%m-%d %H:%M:%S')}")
+              print(f"📊 Found {len(departures)} departures")
+              
+          except requests.exceptions.RequestException as e:
+              print(f"❌ Error: {e}")
+              # Send error message to TRMNL
+              error_html = f"""
+              <div style="font-family: Arial, sans-serif; padding: 10px; color: #000; background: #fff;">
+                <h2 style="margin: 0 0 10px 0; font-size: 16px;">⚠️ Error</h2>
+                <p style="font-size: 12px;">Failed to fetch bus data</p>
+                <p style="font-size: 10px; opacity: 0.6; margin-top: 10px;">
+                  Last update: {datetime.now().strftime('%H:%M')}
+                </p>
+              </div>
+              """
+              
+              try:
+                  error_payload = {"html": error_html}
+                  requests.post(TRMNL_WEBHOOK, json=error_payload, timeout=10)
+              except:
+                  pass
+          
+          EOF
