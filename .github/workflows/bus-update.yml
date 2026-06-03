@@ -121,7 +121,9 @@ jobs:
               
               # Send to TRMNL webhook
               payload = {
-                  "html": html_content
+                  "merge_variables": {
+                      "html": html_content
+                  }
               }
               
               webhook_response = requests.post(TRMNL_WEBHOOK, json=payload, timeout=10)
@@ -144,7 +146,7 @@ jobs:
               """
               
               try:
-                  error_payload = {"html": error_html}
+                  error_payload = {"merge_variables": {"html": error_html}}
                   requests.post(TRMNL_WEBHOOK, json=error_payload, timeout=10)
               except:
                   pass
