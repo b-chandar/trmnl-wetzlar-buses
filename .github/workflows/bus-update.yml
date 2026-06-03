@@ -2,9 +2,7 @@ name: Update TRMNL Bus Display
 
 on:
   schedule:
-    # Run every 15 minutes
     - cron: '*/15 * * * *'
-  # Allow manual trigger
   workflow_dispatch:
 
 jobs:
@@ -18,145 +16,71 @@ jobs:
           import json
           from datetime import datetime
           
-          # Configuration
-          RMV_API_KEY = "${{ secrets.RMV_API_KEY }}"
-          STOP_ID = "3019349"
-          STOP_NAME = "Hermannstein An der Dillbrücke"
-          TRMNL_WEBHOOK = "${{ secrets.TRMNL_WEBHOOK_URL }}"
-          
-          # Fetch departures from RMV API
-          url = f"https://www.rmv.de/hapi/departureBoard?id={STOP_ID}&accessId={RMV_API_KEY}&format=json"
-          
           try:
+              # Configuration
+              RMV_API_KEY = "${{ secrets.RMV_API_KEY }}"
+              STOP_ID = "3019349"
+              TRMNL_WEBHOOK = "${{ secrets.TRMNL_WEBHOOK_URL }}"
+              
+              # Fetch departures from RMV API
+              url = f"https://www.rmv.de/hapi/departureBoard?id={STOP_ID}&accessId={RMV_API_KEY}&format=json"
+              
+              print(f"Fetching from: {url}")
               response = requests.get(url, timeout=10)
-              response.raise_for_status()
+              print(f"Response status: {response.status_code}")
+              
+              if response.status_code != 200:
+                  print(f"Error: {response.status_code} {response.text}")
+                  raise Exception(f"API returned {response.status_code}")
+              
               data = response.json()
+              departures = data.get('Departure', [])[:6]
               
-              print(f"API Response keys: {data.keys()}")
+              print(f"Got {len(departures)} departures")
               
-              # Extract departures - handle both single departure and list
-              departures_raw = data.get('Departure', [])
-              if not isinstance(departures_raw, list):
-                  departures_raw = [departures_raw] if departures_raw else []
-              departures = departures_raw[:6]  # Get first 6 departures
-              
-              # Generate HTML
+              # Build simple HTML
               now = datetime.now()
-              html_content = f"""
-              <div style="font-family: Arial, sans-serif; padding: 10px; color: #000; background: #fff;">
-                <h2 style="margin: 0 0 5px 0; font-size: 18px; border-bottom: 2px solid #000; padding-bottom: 5px;">
-                  WETZLAR BUS
-                </h2>
-                <p style="margin: 5px 0; font-size: 11px; opacity: 0.7;">
-                  {STOP_NAME}
-                </p>
-                <p style="margin: 5px 0; font-size: 10px; opacity: 0.6;">
-                  Updated: {now.strftime('%H:%M')}
-                </p>
-                
-                <div style="margin-top: 10px;">
-              """
+              html = "<div style='font-family:Arial;padding:10px'>"
+              html += "<h3 style='margin:0'>WETZLAR BUS</h3>"
+              html += "<p style='font-size:11px;margin:5px 0'>Hermannstein An der Dillbrücke</p>"
+              html += f"<p style='font-size:10px;opacity:0.6'>Updated {now.strftime('%H:%M')}</p>"
               
               if departures:
-                  for idx, dep in enumerate(departures):
-                      # Extract data from departure object
-                      if isinstance(dep, dict):
-                          # Use real-time time (rtTime) if available, otherwise scheduled time
-                          time_str = dep.get('rtTime', dep.get('time', ''))
-                          # Get line number from name field (e.g., "Bus 200")
-                          name_field = dep.get('name', '?')
-                          line = str(name_field).replace('Bus ', '').strip() if 'Bus' in str(name_field) else '?'
-                          direction = dep.get('direction', 'Unknown')
-                          
-                          # Extract time (format: HH:MM:SS)
-                          if time_str:
-                              time_part = time_str[:5] if len(time_str) >= 5 else time_str
-                          else:
-                              time_part = "N/A"
-                          
-                          # Calculate minutes until departure
-                          try:
-                              # Parse time string HH:MM:SS
-                              time_parts = time_str.split(':')
-                              hour = int(time_parts[0])
-                              minute = int(time_parts[1])
-                              dep_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                              
-                              # If time is in the past, assume it's tomorrow
-                              if dep_time < now:
-                                  dep_time = dep_time.replace(day=dep_time.day + 1)
-                              
-                              mins_until = int((dep_time - now).total_seconds() / 60)
-                              mins_str = f"{mins_until}m" if mins_until > 0 else "Now"
-                          except Exception as e:
-                              print(f"Error parsing time: {e}")
-                              mins_str = "N/A"
-                      
-                      # Highlight next departure
-                      is_next = idx == 0
-                      row_style = "background-color: #f5f5f5; font-weight: bold;" if is_next else ""
-                      
-                      html_content += f"""
-                      <div style="display: grid; grid-template-columns: 40px 60px 1fr 60px; gap: 8px; padding: 8px 0; border-bottom: 1px solid #ccc; {row_style}">
-                        <div style="background: #000; color: #fff; padding: 3px; border-radius: 3px; text-align: center; font-weight: bold; font-size: 12px;">
-                          {line}
-                        </div>
-                        <div style="text-align: center; font-size: 14px; font-weight: bold;">
-                          {time_part}
-                        </div>
-                        <div style="font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                          {direction}
-                        </div>
-                        <div style="text-align: right; font-size: 12px; font-weight: bold;">
-                          {mins_str}
-                        </div>
-                      </div>
-                      """
+                  html += "<div>"
+                  for dep in departures:
+                      time = dep.get('rtTime', dep.get('time', 'N/A'))[:5]
+                      line = dep.get('name', '?').replace('Bus ', '')
+                      direction = dep.get('direction', '?')
+                      html += f"<div style='display:grid;grid-template-columns:40px 60px 1fr 50px;gap:8px;padding:5px 0;border-bottom:1px solid #ccc'>"
+                      html += f"<div style='background:#000;color:#fff;text-align:center;font-weight:bold'>{line}</div>"
+                      html += f"<div style='text-align:center;font-weight:bold'>{time}</div>"
+                      html += f"<div style='font-size:12px'>{direction}</div>"
+                      html += f"<div style='text-align:right'>→</div>"
+                      html += "</div>"
+                  html += "</div>"
               else:
-                  html_content += """
-                  <p style="font-size: 12px; color: #999;">
-                    No departures found
-                  </p>
-                  """
+                  html += "<p>No departures</p>"
               
-              html_content += """
-                </div>
-                <p style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #000; font-size: 9px; opacity: 0.6;">
-                  Data source: RMV Open Data API
-                </p>
-              </div>
-              """
+              html += "</div>"
               
-              # Send to TRMNL webhook
+              # Send to TRMNL
               payload = {
                   "merge_variables": {
-                      "html": html_content
+                      "html": html
                   }
               }
               
+              print(f"Sending to TRMNL...")
               webhook_response = requests.post(TRMNL_WEBHOOK, json=payload, timeout=10)
+              print(f"TRMNL Response: {webhook_response.status_code}")
               webhook_response.raise_for_status()
               
-              print(f"✅ Successfully updated TRMNL display at {now.strftime('%Y-%m-%d %H:%M:%S')}")
-              print(f"📊 Found {len(departures)} departures")
+              print("✅ Success!")
               
-          except requests.exceptions.RequestException as e:
-              print(f"❌ Error: {e}")
-              # Send error message to TRMNL
-              error_html = f"""
-              <div style="font-family: Arial, sans-serif; padding: 10px; color: #000; background: #fff;">
-                <h2 style="margin: 0 0 10px 0; font-size: 16px;">⚠️ Error</h2>
-                <p style="font-size: 12px;">Failed to fetch bus data</p>
-                <p style="font-size: 10px; opacity: 0.6; margin-top: 10px;">
-                  Last update: {datetime.now().strftime('%H:%M')}
-                </p>
-              </div>
-              """
-              
-              try:
-                  error_payload = {"merge_variables": {"html": error_html}}
-                  requests.post(TRMNL_WEBHOOK, json=error_payload, timeout=10)
-              except:
-                  pass
+          except Exception as e:
+              print(f"❌ Error: {str(e)}")
+              import traceback
+              traceback.print_exc()
+              exit(1)
           
           EOF
