@@ -64,14 +64,17 @@ jobs:
               html += "</div>"
               
               # Send to TRMNL
-              payload = {
-                  "merge_variables": {
-                      "html": html
-                  }
-              }
+              # Try sending HTML directly (not wrapped in merge_variables)
+              payload = html
               
               print(f"Sending to TRMNL...")
-              webhook_response = requests.post(TRMNL_WEBHOOK, json=payload, timeout=10)
+              print(f"Payload length: {len(payload)}")
+              webhook_response = requests.post(
+                  TRMNL_WEBHOOK,
+                  data=payload,
+                  headers={"Content-Type": "text/html"},
+                  timeout=10
+              )
               print(f"TRMNL Response: {webhook_response.status_code}")
               webhook_response.raise_for_status()
               
