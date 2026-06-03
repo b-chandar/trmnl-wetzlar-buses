@@ -42,9 +42,9 @@ jobs:
               print(f"Got {len(departures)} departures")
               
               # Build styled HTML with stop name and duration
-              html = """<div style='padding:8px;font-family:Arial,sans-serif;font-size:13px;line-height:1.6'>
-<div style='font-weight:bold;font-size:14px;margin-bottom:2px'>Hermannstein An der Dillbrücke</div>
-<div style='font-size:11px;opacity:0.8;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #000'>
+              html = """<div style="padding:8px;font-family:Arial,sans-serif;font-size:13px;line-height:1.6">
+<div style="font-weight:bold;font-size:14px;margin-bottom:2px">Hermannstein An der Dillbrücke</div>
+<div style="font-size:11px;opacity:0.8;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #000">
 BUS  TIME  DESTINATION            DUR
 </div>"""
               
@@ -56,7 +56,7 @@ BUS  TIME  DESTINATION            DUR
                       duration = '18m'  # Journey to Bahnhof typically ~18 minutes
                       
                       bg = 'background:#f0f0f0;' if i % 2 == 0 else ''
-                      html += f"<div style='{bg}padding:4px 0;margin:2px 0;border-bottom:1px solid #ddd'><span style='font-weight:bold;display:inline-block;width:30px'>{line}</span> <span style='display:inline-block;width:45px'>{time}</span> <span style='display:inline-block;width:90px'>{direction}</span> {duration}</div>"
+                      html += f'<div style="{bg}padding:4px 0;margin:2px 0;border-bottom:1px solid #ddd"><span style="font-weight:bold;display:inline-block;width:30px">{line}</span> <span style="display:inline-block;width:45px">{time}</span> <span style="display:inline-block;width:90px">{direction}</span> {duration}</div>'
               
               html += "</div>"
               
