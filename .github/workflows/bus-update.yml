@@ -34,22 +34,29 @@ jobs:
                   raise Exception(f"API returned {response.status_code}")
               
               data = response.json()
-              departures = data.get('Departure', [])[:6]
+              all_departures = data.get('Departure', [])
+              
+              # Filter to only show buses going to Wetzlar Bahnhof/ZOB
+              departures = [dep for dep in all_departures if 'Bahnhof' in dep.get('direction', '')][:6]
               
               print(f"Got {len(departures)} departures")
               
-              # Build minimal HTML (must be under 2KB for free TRMNL)
-              now = datetime.now()
-              html = f"<div style='padding:5px'><b>WETZLAR BUS</b><br><span style='font-size:10px'>An der Dillbrücke • {now.strftime('%H:%M')}</span><hr style='margin:5px 0'>"
+              # Build styled HTML with stop name and duration
+              html = """<div style='padding:8px;font-family:Arial,sans-serif;font-size:13px;line-height:1.6'>
+<div style='font-weight:bold;font-size:14px;margin-bottom:2px'>Hermannstein An der Dillbrücke</div>
+<div style='font-size:11px;opacity:0.8;margin-bottom:6px;padding-bottom:4px;border-bottom:2px solid #000'>
+BUS  TIME  DESTINATION            DUR
+</div>"""
               
               if departures:
-                  for dep in departures[:4]:  # Only show 4 departures to save space
+                  for i, dep in enumerate(departures[:5]):
                       time = dep.get('rtTime', dep.get('time', 'N/A'))[:5]
-                      line = dep.get('name', '?').replace('Bus ', '')
-                      direction = dep.get('direction', '?')[:20]  # Truncate direction
-                      html += f"<div style='display:grid;grid-template-columns:35px 50px 1fr;gap:5px;font-size:11px;margin:3px 0'><b>{line}</b> <b>{time}</b> {direction}</div>"
-              else:
-                  html += "<p>No data</p>"
+                      line = dep.get('name', '?').replace('Bus ', '').strip()
+                      direction = 'Wetzlar Bahnhof'  # Fixed destination
+                      duration = '18m'  # Journey to Bahnhof typically ~18 minutes
+                      
+                      bg = 'background:#f0f0f0;' if i % 2 == 0 else ''
+                      html += f"<div style='{bg}padding:4px 0;margin:2px 0;border-bottom:1px solid #ddd'><span style='font-weight:bold;display:inline-block;width:30px'>{line}</span> <span style='display:inline-block;width:45px'>{time}</span> <span style='display:inline-block;width:90px'>{direction}</span> {duration}</div>"
               
               html += "</div>"
               
