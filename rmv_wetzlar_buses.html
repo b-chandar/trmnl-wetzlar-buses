@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wetzlar Buses - RMV API Integration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background-color: #fff;
+            color: #000;
+            font-family: 'Arial', sans-serif;
+            padding: 20px;
+            font-size: 16px;
+            line-height: 1.3;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            border-bottom: 3px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .title {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        .route-info {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        .timestamp {
+            font-size: 11px;
+            margin-top: 5px;
+            opacity: 0.7;
+        }
+        
+        .departures-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+        
+        .departure-row {
+            display: grid;
+            grid-template-columns: 50px 80px 1fr 80px;
+            gap: 10px;
+            padding: 12px 0;
+            border-bottom: 1px solid #000;
+            align-items: center;
+        }
+        
+        .departure-row:last-child {
+            border-bottom: none;
+        }
+        
+        .departure-row.next {
+            font-weight: bold;
+            padding-top: 15px;
+            padding-bottom: 15px;
+        }
+        
+        .line-badge {
+            background-color: #000;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 14px;
+        }
+        
+        .departure-time {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .departure-route {
+            font-size: 13px;
+        }
+        
+        .departure-info {
+            font-size: 11px;
+            color: #555;
+        }
+        
+        .mins-until {
+            text-align: right;
+            font-size: 14px;
+        }
+        
+        .mins-until.imminent {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .footer {
+            margin-top: 20px;
+            padding-top: 10px;
+            border-top: 2px solid #000;
+            font-size: 10px;
+            opacity: 0.6;
+        }
+        
+        .error {
+            background-color: #fff;
+            padding: 15px;
+            border: 2px solid #000;
+            margin: 20px 0;
+            font-size: 13px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 14px;
+        }
+        
+        .config-section {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        
+        .config-section h3 {
+            margin-bottom: 10px;
+            font-size: 13px;
+        }
+        
+        .config-code {
+            background-color: #fff;
+            padding: 10px;
+            border-left: 3px solid #000;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="title">WETZLAR BUSES</div>
+            <div class="route-info">Friedrichstr. 3 → Wetzlar Bahnhof</div>
+            <div class="timestamp">Updated: <span id="updateTime">--:--</span></div>
+        </div>
+        
+        <div id="content" class="loading">Loading schedule...</div>
+        
+        <div class="footer">
+            <p>Data source: RMV Open Data API • Auto-updates every 15 minutes</p>
+            <p>Friedrichstr. 3, 35586 Wetzlar</p>
+        </div>
+    </div>
+    
+    <script>
+        // ========== CONFIGURATION ==========
+        // You need to request an API key from: https://www.rmv.de/s/de/rmv-open-data
+        const API_KEY = 'YOUR_RMV_API_KEY_HERE'; // Replace with your API key
+        const API_BASE = 'https://www.rmv.de/hapi/';
+        
+        // Stop IDs (you'll need to look these up using location search)
+        // For now, these are placeholders - you need to find the actual IDs
+        const FRIEDRICHSTR_STOP_ID = 'TBD'; // To be determined via location search
+        const BAHNHOF_STOP_ID = 'TBD';      // To be determined via location search
+        
+        const REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
+        
+        // ========== HELPER FUNCTIONS ==========
+        
+        async function searchStop(stopName) {
+            try {
+                const url = `${API_BASE}location.name?input=${encodeURIComponent(stopName)}&accessId=${API_KEY}&format=json`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.stopLocationOrCoordLocation && data.stopLocationOrCoordLocation.length > 0) {
+                    const stop = data.stopLocationOrCoordLocation[0];
+                    console.log(`Found: ${stop.StopLocation.name} (ID: ${stop.StopLocation.id})`);
+                    return stop.StopLocation;
+                }
+            } catch (error) {
+                console.error('Error searching for stop:', error);
+            }
+            return null;
+        }
+        
+        async function getTrips(originId, destId) {
+            try {
+                const url = `${API_BASE}trip?originId=${originId}&destId=${destId}&accessId=${API_KEY}&format=json`;
+                const response = await fetch(url);
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching trips:', error);
+                return null;
+            }
+        }
+        
+        async function getDepartures(stopId, directionStopId) {
+            try {
+                const url = `${API_BASE}departureBoard?id=${stopId}&direction=${directionStopId}&accessId=${API_KEY}&format=json`;
+                const response = await fetch(url);
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching departures:', error);
+                return null;
+            }
+        }
+        
+        // ========== DISPLAY FUNCTIONS ==========
+        
+        function displayTrips(trips) {
+            const contentDiv = document.getElementById('content');
+            
+            if (!trips || !trips.Trip || trips.Trip.length === 0) {
+                displayError('No trips found');
+                return;
+            }
+            
+            let html = '<div class="departures-list">';
+            
+            trips.Trip.slice(0, 8).forEach((trip, index) => {
+                const leg = trip.Leg[0]; // First leg of journey
+                const departureTime = new Date(leg.Dep.dateTime);
+                const now = new Date();
+                const minsUntil = Math.round((departureTime - now) / 60000);
+                
+                const isNext = index === 0 && minsUntil > -5;
+                const lineNumber = leg.Product?.line || leg.Product?.name || '?';
+                const direction = leg.direction || 'Bahnhof';
+                
+                const stopCount = trip.Leg.length;
+                const duration = Math.round((new Date(trip.Leg[trip.Leg.length - 1].Arr.dateTime) - departureTime) / 60000);
+                
+                html += `
+                    <div class="departure-row ${isNext ? 'next' : ''}">
+                        <div class="line-badge">${lineNumber}</div>
+                        <div class="departure-time">${departureTime.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'})}</div>
+                        <div>
+                            <div class="departure-route">${direction}</div>
+                            <div class="departure-info">${stopCount} stops, ${duration}min</div>
+                        </div>
+                        <div class="mins-until ${minsUntil <= 5 ? 'imminent' : ''}">${minsUntil > 0 ? minsUntil + 'm' : 'Now'}</div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            contentDiv.innerHTML = html;
+        }
+        
+        function displayError(message = 'Unable to load schedule') {
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = `
+                <div class="config-section">
+                    <h3>⚠️ Setup Required</h3>
+                    <p>${message}</p>
+                    <p style="margin-top: 10px;"><strong>To use this display:</strong></p>
+                    <ol style="margin-left: 20px; margin-top: 10px;">
+                        <li>Request an API key from: <strong>rmv.de/s/de/rmv-open-data</strong></li>
+                        <li>Replace <code>YOUR_RMV_API_KEY_HERE</code> in the script</li>
+                        <li>Find stop IDs using the location search (see next step)</li>
+                    </ol>
+                    <h3 style="margin-top: 15px;">Finding Stop IDs</h3>
+                    <p>Use this endpoint to find your stops:</p>
+                    <div class="config-code">
+https://www.rmv.de/hapi/location.name?input=Friedrichstr%20Wetzlar&accessId=YOUR_KEY&format=json
+                    </div>
+                    <p>Look for the <code>id</code> field in the response.</p>
+                </div>
+                ${generateSampleSchedule()}
+            `;
+        }
+        
+        function generateSampleSchedule() {
+            const now = new Date();
+            const times = [2, 7, 12, 17, 22, 27, 32, 37];
+            
+            let html = '<div class="departures-list">';
+            
+            const lines = ['10', '12', '16', '18', '20', '14', '11', '13'];
+            const destinations = [
+                'Steindorf Schulstr.',
+                'Asslar Freizeitbad',
+                'Berliner Ring Nord',
+                'Neuer Friedhof',
+                'Süd-Friedhof',
+                'Schöffergasse',
+                'Giessen',
+                'Haiger'
+            ];
+            
+            times.forEach((mins, idx) => {
+                const depTime = new Date(now.getTime() + mins * 60000);
+                const isNext = idx === 0;
+                
+                html += `
+                    <div class="departure-row ${isNext ? 'next' : ''}">
+                        <div class="line-badge">${lines[idx]}</div>
+                        <div class="departure-time">${depTime.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'})}</div>
+                        <div>
+                            <div class="departure-route">${destinations[idx]}</div>
+                            <div class="departure-info">15-20 mins</div>
+                        </div>
+                        <div class="mins-until ${isNext ? 'imminent' : ''}">${mins}m</div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            return html;
+        }
+        
+        function updateTimestamp() {
+            const now = new Date();
+            document.getElementById('updateTime').textContent = 
+                now.toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'});
+        }
+        
+        // ========== INITIALIZATION ==========
+        
+        async function initialize() {
+            updateTimestamp();
+            
+            // Check if API key is configured
+            if (API_KEY === 'YOUR_RMV_API_KEY_HERE') {
+                displayError('API key not configured');
+                return;
+            }
+            
+            // Try to fetch actual data
+            try {
+                // First, search for the stops if IDs are not set
+                if (FRIEDRICHSTR_STOP_ID === 'TBD') {
+                    const friedrichstrStop = await searchStop('Friedrichstr. Wetzlar');
+                    if (!friedrichstrStop) {
+                        displayError('Could not find Friedrichstr. stop');
+                        return;
+                    }
+                }
+                
+                if (BAHNHOF_STOP_ID === 'TBD') {
+                    const bahnhofStop = await searchStop('Bahnhof Wetzlar');
+                    if (!bahnhofStop) {
+                        displayError('Could not find Bahnhof stop');
+                        return;
+                    }
+                }
+                
+                // Fetch trips
+                const trips = await getTrips(FRIEDRICHSTR_STOP_ID, BAHNHOF_STOP_ID);
+                if (trips && trips.Trip) {
+                    displayTrips(trips);
+                } else {
+                    displayError('No trips found for this route');
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+                displayError('Error fetching data');
+            }
+        }
+        
+        // Initial load
+        initialize();
+        
+        // Update timestamp every minute
+        setInterval(updateTimestamp, 60000);
+        
+        // Refresh schedule every 15 minutes
+        setInterval(initialize, REFRESH_INTERVAL);
+    </script>
+</body>
+</html>
