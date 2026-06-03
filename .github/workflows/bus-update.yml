@@ -1,12 +1,12 @@
 name: Update TRMNL Bus Display
-
+ 
 on:
   schedule:
     # Run every 15 minutes
     - cron: '*/15 * * * *'
   # Allow manual trigger
   workflow_dispatch:
-
+ 
 jobs:
   update-display:
     runs-on: ubuntu-latest
@@ -32,8 +32,13 @@ jobs:
               response.raise_for_status()
               data = response.json()
               
-              # Extract departures
-              departures = data.get('Departure', [])[:6]  # Get first 6 departures
+              print(f"API Response keys: {data.keys()}")
+              
+              # Extract departures - handle both single departure and list
+              departures_raw = data.get('Departure', [])
+              if not isinstance(departures_raw, list):
+                  departures_raw = [departures_raw] if departures_raw else []
+              departures = departures_raw[:6]  # Get first 6 departures
               
               # Generate HTML
               now = datetime.now()
@@ -54,19 +59,26 @@ jobs:
               
               if departures:
                   for idx, dep in enumerate(departures):
-                      time_str = dep.get('dateTime', '')
+                      # Handle both dict and object access
+                      if isinstance(dep, dict):
+                          time_str = dep.get('dateTime', '')
+                          line = str(dep.get('Product', {}).get('line', '?')) if isinstance(dep.get('Product'), dict) else '?'
+                          direction = dep.get('direction', 'Unknown')
+                      else:
+                          time_str = getattr(dep, 'dateTime', '')
+                          product = getattr(dep, 'Product', {})
+                          line = str(getattr(product, 'line', '?')) if hasattr(product, 'line') else '?'
+                          direction = getattr(dep, 'direction', 'Unknown')
+                      
                       if time_str:
                           # Extract time (format: YYYY-MM-DDTHH:MM:SS)
                           time_part = time_str.split('T')[1][:5] if 'T' in time_str else time_str
                       else:
                           time_part = "N/A"
                       
-                      line = dep.get('Product', {}).get('line', '?')
-                      direction = dep.get('direction', 'Unknown')
-                      
                       # Calculate minutes until departure
                       try:
-                          dep_time = datetime.fromisoformat(dep.get('dateTime', '').replace('Z', '+00:00'))
+                          dep_time = datetime.fromisoformat(str(time_str).replace('Z', '+00:00'))
                           mins_until = int((dep_time - now).total_seconds() / 60)
                           mins_str = f"{mins_until}m" if mins_until > 0 else "Now"
                       except:
