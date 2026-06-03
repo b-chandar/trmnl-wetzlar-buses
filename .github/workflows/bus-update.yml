@@ -38,43 +38,30 @@ jobs:
               
               print(f"Got {len(departures)} departures")
               
-              # Build simple HTML
+              # Build minimal HTML (must be under 2KB for free TRMNL)
               now = datetime.now()
-              html = "<div style='font-family:Arial;padding:10px'>"
-              html += "<h3 style='margin:0'>WETZLAR BUS</h3>"
-              html += "<p style='font-size:11px;margin:5px 0'>Hermannstein An der Dillbrücke</p>"
-              html += f"<p style='font-size:10px;opacity:0.6'>Updated {now.strftime('%H:%M')}</p>"
+              html = f"<div style='padding:5px'><b>WETZLAR BUS</b><br><span style='font-size:10px'>An der Dillbrücke • {now.strftime('%H:%M')}</span><hr style='margin:5px 0'>"
               
               if departures:
-                  html += "<div>"
-                  for dep in departures:
+                  for dep in departures[:4]:  # Only show 4 departures to save space
                       time = dep.get('rtTime', dep.get('time', 'N/A'))[:5]
                       line = dep.get('name', '?').replace('Bus ', '')
-                      direction = dep.get('direction', '?')
-                      html += f"<div style='display:grid;grid-template-columns:40px 60px 1fr 50px;gap:8px;padding:5px 0;border-bottom:1px solid #ccc'>"
-                      html += f"<div style='background:#000;color:#fff;text-align:center;font-weight:bold'>{line}</div>"
-                      html += f"<div style='text-align:center;font-weight:bold'>{time}</div>"
-                      html += f"<div style='font-size:12px'>{direction}</div>"
-                      html += f"<div style='text-align:right'>→</div>"
-                      html += "</div>"
-                  html += "</div>"
+                      direction = dep.get('direction', '?')[:20]  # Truncate direction
+                      html += f"<div style='display:grid;grid-template-columns:35px 50px 1fr;gap:5px;font-size:11px;margin:3px 0'><b>{line}</b> <b>{time}</b> {direction}</div>"
               else:
-                  html += "<p>No departures</p>"
+                  html += "<p>No data</p>"
               
               html += "</div>"
               
-              # Send to TRMNL
-              # Try sending HTML directly (not wrapped in merge_variables)
-              payload = html
+              # Send to TRMNL with merge_variables format
+              payload = {
+                  "merge_variables": {
+                      "html": html
+                  }
+              }
               
-              print(f"Sending to TRMNL...")
-              print(f"Payload length: {len(payload)}")
-              webhook_response = requests.post(
-                  TRMNL_WEBHOOK,
-                  data=payload,
-                  headers={"Content-Type": "text/html"},
-                  timeout=10
-              )
+              print(f"Payload size: {len(str(payload))} bytes (limit: 2048)")
+              webhook_response = requests.post(TRMNL_WEBHOOK, json=payload, timeout=10)
               print(f"TRMNL Response: {webhook_response.status_code}")
               webhook_response.raise_for_status()
               
