@@ -77,15 +77,19 @@ jobs:
                           # Calculate minutes until departure
                           try:
                               # Parse time string HH:MM:SS
-                              time_obj = datetime.strptime(time_str, '%H:%M:%S').time()
-                              dep_time = datetime.combine(now.date(), time_obj)
+                              time_parts = time_str.split(':')
+                              hour = int(time_parts[0])
+                              minute = int(time_parts[1])
+                              dep_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                              
+                              # If time is in the past, assume it's tomorrow
+                              if dep_time < now:
+                                  dep_time = dep_time.replace(day=dep_time.day + 1)
+                              
                               mins_until = int((dep_time - now).total_seconds() / 60)
-                              # Handle times past midnight
-                              if mins_until < -300:  # More than 5 hours ago
-                                  dep_time = datetime.combine(now.date() + __import__('datetime').timedelta(days=1), time_obj)
-                                  mins_until = int((dep_time - now).total_seconds() / 60)
                               mins_str = f"{mins_until}m" if mins_until > 0 else "Now"
-                          except:
+                          except Exception as e:
+                              print(f"Error parsing time: {e}")
                               mins_str = "N/A"
                       
                       # Highlight next departure
